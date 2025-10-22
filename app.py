@@ -117,21 +117,27 @@ def main():
             
             # Display inline suggestion with prominent styling
             st.markdown("---")
-            col_desc, col_conf, col_btn = st.columns([4, 1, 1])
+            col_desc, col_conf, col_accept, col_reject = st.columns([3, 1, 1, 1])
             
             with col_desc:
                 st.markdown(f"**✨ {suggestion.get('description', 'Code suggestion')}**")
             with col_conf:
                 st.caption(f"🎯 {confidence:.0f}%")
-            with col_btn:
+            with col_accept:
                 if st.button("✓ Accept", key="accept_smart", type="primary", use_container_width=True):
                     st.session_state.code = suggestion['completion']
+                    st.session_state.smart_suggestion = None
+                    st.rerun()
+            with col_reject:
+                if st.button("✕ Dismiss", key="reject_smart", use_container_width=True):
                     st.session_state.smart_suggestion = None
                     st.rerun()
             
             # Show suggestion in code block (inline preview)
             with st.container():
                 st.code(suggestion['completion'], language=st.session_state.language, line_numbers=True)
+            
+            st.caption("💡 Tip: Click 'Dismiss' to reject and continue typing your own code")
             st.markdown("---")
         
         # Code editor
