@@ -272,7 +272,7 @@ class AIService:
         if language == "python":
             try:
                 script = jedi.Script(code=code)
-                completions = script.completions()
+                completions = script.completions()  # type: ignore[attr-defined]
                 
                 for completion in completions[:2]:
                     suggestion_code = code
@@ -285,7 +285,9 @@ class AIService:
                         "code": suggestion_code,
                         "type": "completion"
                     })
+            except AttributeError as e:
+                self.logger.warning(f"Jedi completion API unavailable: {e}")
             except Exception as e:
-                self.logger.debug(f"Jedi completion error: {e}")
+                self.logger.error(f"Jedi completion error: {e}")
         
         return suggestions
