@@ -1,4 +1,4 @@
-modules = ["python-3.11", "nodejs-20"]
+modules = ["python-3.11"]
 [agent]
 integrations = ["python_gemini:1.0.0", "python_openai:1.0.0"]
 expertMode = true
@@ -50,3 +50,7 @@ externalPort = 3001
 [[ports]]
 localPort = 44345
 externalPort = 3003
+
+[[ports]]
+localPort = 45931
+externalPort = 3000
