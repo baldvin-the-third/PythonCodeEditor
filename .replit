@@ -1,4 +1,4 @@
-modules = ["python-3.11"]
+modules = ["python-3.11", "nodejs-20"]
 [agent]
 integrations = ["python_gemini:1.0.0", "python_openai:1.0.0"]
 
@@ -39,5 +39,5 @@ localPort = 5000
 externalPort = 80
 
 [[ports]]
-localPort = 33707
-externalPort = 3000
+localPort = 33423
+externalPort = 3001

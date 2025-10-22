@@ -173,9 +173,8 @@ class CodeExecutor:
     def _run_with_limits(self, cmd: list, timeout: int = 10, cwd: Optional[str] = None) -> str:
         """Run command with resource limits"""
         try:
-            # Set resource limits
+            # Set environment
             env = os.environ.copy()
-            env['PYTHONPATH'] = ''  # Clear Python path for security
             
             self.current_process = subprocess.Popen(
                 cmd,
@@ -183,8 +182,7 @@ class CodeExecutor:
                 stderr=subprocess.STDOUT,
                 text=True,
                 cwd=cwd,
-                env=env,
-                preexec_fn=self._set_limits
+                env=env
             )
             
             try:
@@ -204,17 +202,6 @@ class CodeExecutor:
             return f"❌ Process execution error: {str(e)}"
         finally:
             self.current_process = None
-    
-    def _set_limits(self):
-        """Set resource limits for child process"""
-        try:
-            import resource
-            # Limit CPU time to 10 seconds
-            resource.setrlimit(resource.RLIMIT_CPU, (10, 10))
-            # Limit memory to 128MB
-            resource.setrlimit(resource.RLIMIT_AS, (128 * 1024 * 1024, 128 * 1024 * 1024))
-        except:
-            pass  # Resource limits not available on all systems
     
     def stop_execution(self):
         """Stop currently running execution"""
