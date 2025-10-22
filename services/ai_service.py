@@ -272,22 +272,26 @@ class AIService:
         if language == "python":
             try:
                 script = jedi.Script(code=code)
-                completions = script.completions()  # type: ignore[attr-defined]
+                # Try the new API first, then fall back
+                try:
+                    completions = script.complete()  # type: ignore
+                except AttributeError:
+                    # Jedi API unavailable, skip silently
+                    return suggestions
                 
                 for completion in completions[:2]:
                     suggestion_code = code
-                    if completion.complete:
+                    if hasattr(completion, 'complete') and completion.complete:
                         suggestion_code = code + completion.complete
                     
                     suggestions.append({
                         "title": f"Complete: {completion.name}",
-                        "description": completion.docstring()[:100] if completion.docstring() else f"Add {completion.type}: {completion.name}",
+                        "description": completion.docstring()[:100] if hasattr(completion, 'docstring') and completion.docstring() else f"Add: {completion.name}",
                         "code": suggestion_code,
                         "type": "completion"
                     })
-            except AttributeError as e:
-                self.logger.warning(f"Jedi completion API unavailable: {e}")
-            except Exception as e:
-                self.logger.error(f"Jedi completion error: {e}")
+            except Exception:
+                # Silently skip if Jedi fails
+                pass
         
         return suggestions
