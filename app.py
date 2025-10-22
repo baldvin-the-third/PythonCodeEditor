@@ -7,6 +7,7 @@ from services.ai_service import AIService
 from services.code_executor import CodeExecutor
 from services.language_handler import LanguageHandler
 from services.code_analyzer import CodeAnalyzer
+from services.inline_completion import InlineCompletionService
 from config.languages import SUPPORTED_LANGUAGES
 from utils.formatters import format_code
 
@@ -27,6 +28,10 @@ def get_language_handler():
 def get_code_analyzer():
     return CodeAnalyzer()
 
+@st.cache_resource
+def get_inline_completion():
+    return InlineCompletionService()
+
 def main():
     st.set_page_config(
         page_title="AI Code Editor",
@@ -46,12 +51,17 @@ def main():
         st.session_state.suggestions = []
     if 'analysis' not in st.session_state:
         st.session_state.analysis = {}
+    if 'inline_suggestion' not in st.session_state:
+        st.session_state.inline_suggestion = None
+    if 'show_snippet_suggestions' not in st.session_state:
+        st.session_state.show_snippet_suggestions = False
     
     # Get services
     ai_service = get_ai_service()
     code_executor = get_code_executor()
     language_handler = get_language_handler()
     code_analyzer = get_code_analyzer()
+    inline_completion = get_inline_completion()
     
     # Sidebar for settings
     with st.sidebar:
@@ -74,6 +84,7 @@ def main():
         st.info("Using Local AI Models (No API required)")
         
         enable_suggestions = st.checkbox("Enable Code Suggestions", value=True)
+        enable_inline = st.checkbox("Enable Inline Completions", value=True, help="Get real-time code completions as you type")
         enable_analysis = st.checkbox("Enable Code Analysis", value=True)
         
         # Code formatting
@@ -113,6 +124,13 @@ def main():
         if code_content != st.session_state.code:
             st.session_state.code = code_content
             
+            # Get inline completion
+            if enable_inline and st.session_state.language == "python":
+                inline_suggestion = inline_completion.get_inline_completion(code_content)
+                st.session_state.inline_suggestion = inline_suggestion
+            else:
+                st.session_state.inline_suggestion = None
+            
             # Get AI suggestions in background
             if enable_suggestions and code_content.strip():
                 with st.spinner("Analyzing code..."):
@@ -130,6 +148,51 @@ def main():
                     st.session_state.language
                 )
                 st.session_state.analysis = analysis
+        
+        # Inline completion suggestion display (like GitHub Copilot)
+        if enable_inline and st.session_state.inline_suggestion:
+            suggestion = st.session_state.inline_suggestion
+            st.markdown("---")
+            st.markdown("### ✨ Inline Suggestion")
+            
+            col_suggest_info, col_suggest_btn = st.columns([3, 1])
+            with col_suggest_info:
+                st.caption(f"💡 {suggestion.get('description', 'Code completion available')}")
+            
+            with col_suggest_btn:
+                if st.button("⇥ Accept (Tab)", key="accept_inline", use_container_width=True, type="primary"):
+                    # Append or replace with suggestion
+                    if suggestion.get('type') == 'pattern':
+                        st.session_state.code = suggestion['completion']
+                    elif suggestion.get('type') == 'line':
+                        st.session_state.code += '\n' + suggestion['completion']
+                    st.session_state.inline_suggestion = None
+                    st.rerun()
+            
+            # Show the suggestion preview
+            st.code(suggestion.get('completion', ''), language=st.session_state.language)
+            st.markdown("---")
+        
+        # Quick snippet suggestions
+        if enable_inline:
+            with st.expander("📚 Quick Code Snippets", expanded=False):
+                st.caption("Click to insert common code patterns")
+                
+                snippet_search = st.text_input("Search snippets (e.g., 'prime', 'palindrome', 'sort')", key="snippet_search")
+                
+                if snippet_search:
+                    snippets = inline_completion.get_snippet_suggestions(snippet_search)
+                else:
+                    snippets = inline_completion.get_snippet_suggestions("")
+                
+                if snippets:
+                    cols = st.columns(min(3, len(snippets)))
+                    for idx, snippet in enumerate(snippets[:6]):
+                        with cols[idx % 3]:
+                            if st.button(f"📝 {snippet['name']}", key=f"snippet_{idx}", use_container_width=True):
+                                st.session_state.code = snippet['code']
+                                st.rerun()
+                            st.caption(snippet.get('description', '')[:50])
         
         # AI Suggestions panel
         if enable_suggestions and st.session_state.suggestions:
