@@ -134,14 +134,44 @@ def main():
         # AI Suggestions panel
         if enable_suggestions and st.session_state.suggestions:
             st.subheader("💡 AI Suggestions")
-            for i, suggestion in enumerate(st.session_state.suggestions[:3]):
-                with st.expander(f"Suggestion {i+1}: {suggestion.get('title', 'Code Enhancement')}"):
-                    st.write(suggestion.get('description', ''))
-                    if suggestion.get('code'):
-                        st.code(suggestion['code'], language=st.session_state.language)
-                        if st.button(f"Apply Suggestion {i+1}", key=f"apply_{i}"):
-                            st.session_state.code = suggestion['code']
-                            st.rerun()
+            
+            # Group suggestions by type
+            suggestion_types = {}
+            for suggestion in st.session_state.suggestions[:10]:
+                stype = suggestion.get('type', 'general')
+                if stype not in suggestion_types:
+                    suggestion_types[stype] = []
+                suggestion_types[stype].append(suggestion)
+            
+            # Display by category with icons
+            type_icons = {
+                'algorithm': '⚙️',
+                'data_structure': '📊',
+                'ml_algorithm': '🤖',
+                'optimization': '⚡',
+                'snippet': '📝',
+                'completion': '✨',
+                'general': '💡'
+            }
+            
+            for stype, suggestions in suggestion_types.items():
+                icon = type_icons.get(stype, '💡')
+                st.markdown(f"### {icon} {stype.replace('_', ' ').title()}")
+                
+                for i, suggestion in enumerate(suggestions[:3]):
+                    with st.expander(f"{suggestion.get('title', 'Code Enhancement')}"):
+                        st.write(suggestion.get('description', ''))
+                        
+                        if suggestion.get('category'):
+                            st.caption(f"📂 {suggestion['category'].replace('_', ' ').title()}")
+                        
+                        if suggestion.get('code'):
+                            st.code(suggestion['code'], language=st.session_state.language)
+                            unique_key = f"apply_{stype}_{i}_{hash(suggestion['title'])}"
+                            if st.button(f"Apply This", key=unique_key, use_container_width=True):
+                                st.session_state.code = suggestion['code']
+                                st.success(f"✅ Applied: {suggestion['title']}")
+                                st.rerun()
         
         # Execution controls
         col_run, col_stop = st.columns(2)
