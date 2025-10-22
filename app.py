@@ -8,6 +8,7 @@ from services.code_executor import CodeExecutor
 from services.language_handler import LanguageHandler
 from services.code_analyzer import CodeAnalyzer
 from services.inline_completion import InlineCompletionService
+from services.smart_completion import SmartCodeCompletion
 from config.languages import SUPPORTED_LANGUAGES
 from utils.formatters import format_code
 
@@ -31,6 +32,10 @@ def get_code_analyzer():
 @st.cache_resource
 def get_inline_completion():
     return InlineCompletionService()
+
+@st.cache_resource
+def get_smart_completion():
+    return SmartCodeCompletion()
 
 def main():
     st.set_page_config(
@@ -62,6 +67,7 @@ def main():
     language_handler = get_language_handler()
     code_analyzer = get_code_analyzer()
     inline_completion = get_inline_completion()
+    smart_completion = get_smart_completion()
     
     # Sidebar for settings
     with st.sidebar:
@@ -84,7 +90,7 @@ def main():
         st.info("Using Local AI Models (No API required)")
         
         enable_suggestions = st.checkbox("Enable Code Suggestions", value=True)
-        enable_inline = st.checkbox("Enable Inline Completions", value=True, help="Get real-time code completions as you type")
+        enable_inline = st.checkbox("Enable Smart Inline Completions", value=True, help="AI-powered inline code predictions like Google Colab")
         enable_analysis = st.checkbox("Enable Code Analysis", value=True)
         
         # Code formatting
@@ -103,6 +109,30 @@ def main():
     
     with col1:
         st.subheader(f"📝 Editor ({SUPPORTED_LANGUAGES[st.session_state.language]['name']})")
+        
+        # Smart inline suggestion (appears above editor like Google Colab)
+        if enable_inline and st.session_state.get('smart_suggestion'):
+            suggestion = st.session_state.smart_suggestion
+            confidence = suggestion.get('confidence', 0) * 100
+            
+            # Display inline suggestion with prominent styling
+            st.markdown("---")
+            col_desc, col_conf, col_btn = st.columns([4, 1, 1])
+            
+            with col_desc:
+                st.markdown(f"**✨ {suggestion.get('description', 'Code suggestion')}**")
+            with col_conf:
+                st.caption(f"🎯 {confidence:.0f}%")
+            with col_btn:
+                if st.button("✓ Accept", key="accept_smart", type="primary", use_container_width=True):
+                    st.session_state.code = suggestion['completion']
+                    st.session_state.smart_suggestion = None
+                    st.rerun()
+            
+            # Show suggestion in code block (inline preview)
+            with st.container():
+                st.code(suggestion['completion'], language=st.session_state.language, line_numbers=True)
+            st.markdown("---")
         
         # Code editor
         code_content = streamlit_ace.st_ace(
@@ -124,11 +154,16 @@ def main():
         if code_content != st.session_state.code:
             st.session_state.code = code_content
             
-            # Get inline completion
+            # Get smart inline completion (AI-powered)
             if enable_inline and st.session_state.language == "python":
+                smart_suggestion = smart_completion.analyze_and_predict(code_content)
+                st.session_state.smart_suggestion = smart_suggestion
+                
+                # Also get basic inline suggestion as fallback
                 inline_suggestion = inline_completion.get_inline_completion(code_content)
                 st.session_state.inline_suggestion = inline_suggestion
             else:
+                st.session_state.smart_suggestion = None
                 st.session_state.inline_suggestion = None
             
             # Get AI suggestions in background
@@ -149,50 +184,44 @@ def main():
                 )
                 st.session_state.analysis = analysis
         
-        # Inline completion suggestion display (like GitHub Copilot)
-        if enable_inline and st.session_state.inline_suggestion:
-            suggestion = st.session_state.inline_suggestion
-            st.markdown("---")
-            st.markdown("### ✨ Inline Suggestion")
-            
-            col_suggest_info, col_suggest_btn = st.columns([3, 1])
-            with col_suggest_info:
-                st.caption(f"💡 {suggestion.get('description', 'Code completion available')}")
-            
-            with col_suggest_btn:
-                if st.button("⇥ Accept (Tab)", key="accept_inline", use_container_width=True, type="primary"):
-                    # Append or replace with suggestion
-                    if suggestion.get('type') == 'pattern':
-                        st.session_state.code = suggestion['completion']
-                    elif suggestion.get('type') == 'line':
-                        st.session_state.code += '\n' + suggestion['completion']
-                    st.session_state.inline_suggestion = None
-                    st.rerun()
-            
-            # Show the suggestion preview
-            st.code(suggestion.get('completion', ''), language=st.session_state.language)
-            st.markdown("---")
         
-        # Quick snippet suggestions
+        # Quick snippet suggestions (inline style)
         if enable_inline:
-            with st.expander("📚 Quick Code Snippets", expanded=False):
-                st.caption("Click to insert common code patterns")
+            with st.expander("📚 Smart Code Snippets Library", expanded=False):
+                st.caption("🔍 Search and insert complete code patterns")
                 
-                snippet_search = st.text_input("Search snippets (e.g., 'prime', 'palindrome', 'sort')", key="snippet_search")
+                snippet_search = st.text_input(
+                    "Type to search (prime, palindrome, sort, fibonacci, etc.)", 
+                    key="snippet_search",
+                    placeholder="Start typing..."
+                )
                 
+                # Get smart suggestions
                 if snippet_search:
-                    snippets = inline_completion.get_snippet_suggestions(snippet_search)
+                    snippets = smart_completion.get_all_suggestions(snippet_search)
                 else:
-                    snippets = inline_completion.get_snippet_suggestions("")
+                    snippets = smart_completion.get_all_suggestions("")
                 
                 if snippets:
-                    cols = st.columns(min(3, len(snippets)))
-                    for idx, snippet in enumerate(snippets[:6]):
-                        with cols[idx % 3]:
-                            if st.button(f"📝 {snippet['name']}", key=f"snippet_{idx}", use_container_width=True):
+                    st.caption(f"📊 Found {len(snippets)} matching patterns")
+                    for idx, snippet in enumerate(snippets[:8]):
+                        col_name, col_btn = st.columns([4, 1])
+                        with col_name:
+                            st.markdown(f"**{snippet['name']}**")
+                            st.caption(snippet.get('description', ''))
+                        with col_btn:
+                            if st.button("Insert", key=f"snippet_{idx}", use_container_width=True):
                                 st.session_state.code = snippet['code']
+                                st.session_state.smart_suggestion = None
                                 st.rerun()
-                            st.caption(snippet.get('description', '')[:50])
+                        
+                        # Show preview
+                        with st.expander(f"Preview: {snippet['name']}", expanded=False):
+                            st.code(snippet['code'][:200] + "..." if len(snippet['code']) > 200 else snippet['code'], 
+                                   language="python")
+                        
+                        if idx < len(snippets) - 1:
+                            st.markdown("---")
         
         # AI Suggestions panel
         if enable_suggestions and st.session_state.suggestions:
