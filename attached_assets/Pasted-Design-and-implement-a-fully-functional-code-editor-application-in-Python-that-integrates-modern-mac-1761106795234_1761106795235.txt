@@ -1,0 +1,46 @@
+Design and implement a fully functional code editor application in Python that integrates modern machine learning, generative AI models, and LLMs to provide intelligent, context-aware inline code suggestions. The application should feature:
+
+A robust editor interface supporting multiple programming languages (e.g., Python, Java, C++, JavaScript)
+
+Real-time syntax highlighting, code formatting, and autocompletion across languages
+
+Inline code suggestions powered by state-of-the-art LLMs and Generative AI (e.g., OpenAI GPT, Codex, Code Llama, Gemini, or similar models), adapting to the user's current line and intent
+
+A built-in console/output panel displaying real-time output, errors, and logs when the code is compiled or interpreted
+
+Functionality to compile/interpret programs properly for different languages (e.g., using subprocesses, language-specific compilers/interpreters)
+
+Integration of AI-driven code refactoring, error detection, and documentation generation
+
+User authentication and project management features (optional for expansion)
+
+An intuitive, modern UI/UX (recommend PyQt, Tkinter, or web-based frameworks with Electron or PyWebview)
+
+Modular architecture to support easy addition of new languages, models, or plugins
+
+Task Requirements:
+
+Use Python as the primary backend language; leverage existing libraries (e.g., VSCode components, Pygments, Pylance, Jedi, Tree-sitter, subprocess, OpenAI API, Hugging Face API)
+
+Fine-tune or integrate pre-trained LLMs/code models for contextual suggestions (train/Test on custom dataset if needed)
+
+Ensure secure execution and clear isolation when running user code (sandboxing, limit resources)
+
+Fully handle real-time code compilation/interpretation and reflect output/errors in the console pane
+
+Design the IDE/editor to be extensible, allowing users to switch between supported languages with persistent settings
+
+Document the codebase and main design choices
+
+Provide installation/deployment instructions and easy setup for contributors
+
+Stretch Goals:
+
+Enable collaborative code editing
+
+Implement version control integration (e.g., Git)
+
+Cloud execution to offload heavy compilation/interpreting
+
+End User Experience:
+A seamless, intelligent coding environment where users receive smart, AI-powered code suggestions while writing code in their preferred language and instantly see the results in a console pane within the same application. The tool should cater to programmers, students, and developers seeking enhanced productivity, error reduction, and modern AI-driven code assistance.
