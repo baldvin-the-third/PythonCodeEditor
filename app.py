@@ -108,11 +108,9 @@ def main():
             font_size=14,
             tab_size=4,
             wrap=True,
-            annotations=None,
             markers=None,
             show_gutter=True,
-            show_print_margin=True,
-            annotations=st.session_state.analysis.get('errors', [])
+            show_print_margin=True
         )
         
         # Update session state if code changed

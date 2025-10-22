@@ -1,213 +1,329 @@
-import os
-import json
+import ast
+import re
 import logging
 from typing import List, Dict, Any, Optional
 import jedi
-from openai import OpenAI
-from google import genai
-from google.genai import types
 
 class AIService:
-    """Service for AI-powered code suggestions using local and cloud models"""
+    """Service for AI-powered code suggestions using local models only"""
     
     def __init__(self):
-        self.openai_client = None
-        self.gemini_client = None
-        self._setup_clients()
-    
-    def _setup_clients(self):
-        """Initialize AI clients"""
-        # Setup OpenAI
-        openai_key = os.environ.get("OPENAI_API_KEY")
-        if openai_key:
-            self.openai_client = OpenAI(api_key=openai_key)
-        
-        # Setup Gemini
-        gemini_key = os.environ.get("GEMINI_API_KEY")
-        if gemini_key:
-            self.gemini_client = genai.Client(api_key=gemini_key)
+        self.logger = logging.getLogger(__name__)
     
     def get_suggestions(self, code: str, language: str, provider: str = "local") -> List[Dict[str, Any]]:
-        """Get code suggestions based on provider"""
+        """Get code suggestions using local intelligence only"""
         try:
-            if provider == "local":
-                return self._get_local_suggestions(code, language)
-            elif provider == "openai" and self.openai_client:
-                return self._get_openai_suggestions(code, language)
-            elif provider == "gemini" and self.gemini_client:
-                return self._get_gemini_suggestions(code, language)
-            else:
-                return self._get_local_suggestions(code, language)
+            return self._get_local_suggestions(code, language)
         except Exception as e:
-            logging.error(f"Error getting suggestions: {e}")
+            self.logger.error(f"Error getting suggestions: {e}")
             return []
     
     def _get_local_suggestions(self, code: str, language: str) -> List[Dict[str, Any]]:
-        """Get local code suggestions using Jedi for Python"""
+        """Get local code suggestions using language-specific analyzers"""
         suggestions = []
         
         if language == "python":
-            try:
-                # Use Jedi for Python completions
-                script = jedi.Script(code=code)
-                completions = script.completions()
-                
-                for completion in completions[:5]:
-                    suggestions.append({
-                        "title": f"Complete with {completion.name}",
-                        "description": completion.docstring() or f"Add {completion.name}",
-                        "code": code + completion.complete,
-                        "type": "completion"
-                    })
-            except Exception as e:
-                logging.error(f"Jedi completion error: {e}")
+            suggestions.extend(self._get_python_suggestions(code))
+        elif language == "javascript":
+            suggestions.extend(self._get_javascript_suggestions(code))
+        elif language == "java":
+            suggestions.extend(self._get_java_suggestions(code))
+        elif language == "cpp":
+            suggestions.extend(self._get_cpp_suggestions(code))
         
-        # Add basic suggestions for all languages
-        suggestions.extend(self._get_basic_suggestions(code, language))
+        return suggestions[:5]
+    
+    def _get_python_suggestions(self, code: str) -> List[Dict[str, Any]]:
+        """Get Python-specific suggestions using Jedi and AST analysis"""
+        suggestions = []
+        
+        try:
+            script = jedi.Script(code=code)
+            completions = script.completions()
+            
+            for completion in completions[:3]:
+                suggestion_code = code
+                if completion.complete:
+                    suggestion_code = code + completion.complete
+                
+                suggestions.append({
+                    "title": f"Complete: {completion.name}",
+                    "description": completion.docstring()[:100] if completion.docstring() else f"Add {completion.type}: {completion.name}",
+                    "code": suggestion_code,
+                    "type": "completion"
+                })
+        except Exception as e:
+            self.logger.debug(f"Jedi completion error: {e}")
+        
+        try:
+            tree = ast.parse(code)
+            
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    if not ast.get_docstring(node):
+                        suggested_code = self._add_python_docstring(code, node)
+                        suggestions.append({
+                            "title": f"Add docstring to {node.name}()",
+                            "description": "Functions should have docstrings describing their purpose",
+                            "code": suggested_code,
+                            "type": "documentation"
+                        })
+                        break
+                
+                if isinstance(node, ast.ExceptHandler) and node.type is None:
+                    suggestions.append({
+                        "title": "Specify exception type",
+                        "description": f"Bare except clauses should specify exception types",
+                        "code": code,
+                        "type": "best_practice"
+                    })
+                    break
+        except:
+            pass
+        
+        lines = code.split('\n')
+        long_lines = [i+1 for i, line in enumerate(lines) if len(line) > 79]
+        if long_lines:
+            suggestions.append({
+                "title": "Fix line length",
+                "description": f"Lines {long_lines[:3]} exceed PEP 8 recommendation (79 chars)",
+                "code": code,
+                "type": "style"
+            })
+        
+        if not any('import' in line for line in lines):
+            suggestions.append({
+                "title": "Consider imports",
+                "description": "Add necessary import statements at the top",
+                "code": code,
+                "type": "structure"
+            })
         
         return suggestions
     
-    def _get_openai_suggestions(self, code: str, language: str) -> List[Dict[str, Any]]:
-        """Get suggestions from OpenAI GPT-5"""
-        try:
-            # the newest OpenAI model is "gpt-5" which was released August 7, 2025.
-            # do not change this unless explicitly requested by the user
-            prompt = f"""
-            Analyze this {language} code and provide 3 intelligent suggestions for improvement:
-            
-            ```{language}
-            {code}
-            ```
-            
-            For each suggestion, provide:
-            1. A brief title
-            2. A description of what it improves
-            3. The improved code
-            
-            Respond in JSON format:
-            {{"suggestions": [
-                {{
-                    "title": "suggestion title",
-                    "description": "what this improves",
-                    "code": "improved code",
-                    "type": "improvement"
-                }}
-            ]}}
-            """
-            
-            response = self.openai_client.chat.completions.create(
-                model="gpt-5",
-                messages=[{"role": "user", "content": prompt}],
-                response_format={"type": "json_object"},
-                max_completion_tokens=2048
-            )
-            
-            result = json.loads(response.choices[0].message.content)
-            return result.get("suggestions", [])
-            
-        except Exception as e:
-            logging.error(f"OpenAI suggestion error: {e}")
-            return self._get_local_suggestions(code, language)
+    def _add_python_docstring(self, code: str, node: ast.FunctionDef) -> str:
+        """Add a docstring to a Python function"""
+        lines = code.split('\n')
+        func_line = node.lineno - 1
+        
+        if func_line + 1 < len(lines):
+            indent = len(lines[func_line]) - len(lines[func_line].lstrip())
+            docstring = f'{" " * (indent + 4)}"""Function description."""'
+            lines.insert(func_line + 1, docstring)
+        
+        return '\n'.join(lines)
     
-    def _get_gemini_suggestions(self, code: str, language: str) -> List[Dict[str, Any]]:
-        """Get suggestions from Google Gemini"""
-        try:
-            prompt = f"""
-            Analyze this {language} code and provide 3 intelligent suggestions for improvement:
-            
-            ```{language}
-            {code}
-            ```
-            
-            For each suggestion, provide:
-            1. A brief title
-            2. A description of what it improves
-            3. The improved code
-            
-            Respond in JSON format with an array of suggestions.
-            """
-            
-            response = self.gemini_client.models.generate_content(
-                model="gemini-2.5-flash",
-                contents=prompt,
-                config=types.GenerateContentConfig(
-                    response_mime_type="application/json"
-                )
-            )
-            
-            if response.text:
-                result = json.loads(response.text)
-                return result.get("suggestions", [])
-            
-        except Exception as e:
-            logging.error(f"Gemini suggestion error: {e}")
-            return self._get_local_suggestions(code, language)
-    
-    def _get_basic_suggestions(self, code: str, language: str) -> List[Dict[str, Any]]:
-        """Get basic code improvement suggestions"""
+    def _get_javascript_suggestions(self, code: str) -> List[Dict[str, Any]]:
+        """Get JavaScript-specific suggestions"""
         suggestions = []
         lines = code.split('\n')
         
-        # Check for common improvements
-        if language == "python":
-            # Check for missing docstrings
-            if any(line.strip().startswith('def ') for line in lines):
-                if not any('"""' in line or "'''" in line for line in lines):
-                    suggestions.append({
-                        "title": "Add docstrings",
-                        "description": "Functions should have docstrings for better documentation",
-                        "code": code,
-                        "type": "documentation"
-                    })
-            
-            # Check for long lines
-            long_lines = [i+1 for i, line in enumerate(lines) if len(line) > 79]
-            if long_lines:
-                suggestions.append({
-                    "title": "Fix long lines",
-                    "description": f"Lines {long_lines[:3]} exceed 79 characters",
-                    "code": code,
-                    "type": "style"
-                })
+        if any(re.search(r'\bvar\s+\w+', line) for line in lines):
+            suggestions.append({
+                "title": "Use let/const instead of var",
+                "description": "Modern JavaScript prefers let and const over var for better scoping",
+                "code": re.sub(r'\bvar\s+', 'const ', code),
+                "type": "modernization"
+            })
+        
+        if any(re.search(r'[^=!]==[^=]', line) for line in lines):
+            suggestions.append({
+                "title": "Use strict equality (===)",
+                "description": "Use === for type-safe comparisons instead of ==",
+                "code": code,
+                "type": "best_practice"
+            })
+        
+        if 'function' in code and '=>' not in code:
+            suggestions.append({
+                "title": "Consider arrow functions",
+                "description": "Arrow functions provide cleaner syntax for callbacks",
+                "code": code,
+                "type": "modernization"
+            })
+        
+        if any('console.log' in line for line in lines):
+            suggestions.append({
+                "title": "Add error handling",
+                "description": "Consider wrapping console.log calls in try-catch blocks",
+                "code": code,
+                "type": "robustness"
+            })
         
         return suggestions
     
-    def get_code_explanation(self, code: str, language: str, provider: str = "openai") -> str:
-        """Get explanation of code functionality"""
-        try:
-            if provider == "openai" and self.openai_client:
-                prompt = f"Explain what this {language} code does:\n\n```{language}\n{code}\n```"
-                
-                response = self.openai_client.chat.completions.create(
-                    model="gpt-5",
-                    messages=[{"role": "user", "content": prompt}],
-                    max_completion_tokens=1024
-                )
-                
-                return response.choices[0].message.content
-                
-            elif provider == "gemini" and self.gemini_client:
-                prompt = f"Explain what this {language} code does:\n\n```{language}\n{code}\n```"
-                
-                response = self.gemini_client.models.generate_content(
-                    model="gemini-2.5-flash",
-                    contents=prompt
-                )
-                
-                return response.text or "Could not generate explanation"
+    def _get_java_suggestions(self, code: str) -> List[Dict[str, Any]]:
+        """Get Java-specific suggestions"""
+        suggestions = []
+        lines = code.split('\n')
         
+        if not any('public class' in line or 'class' in line for line in lines):
+            suggestions.append({
+                "title": "Add class definition",
+                "description": "Java code should be organized in classes",
+                "code": code,
+                "type": "structure"
+            })
+        
+        if any('System.out.println' in line for line in lines) and not any('try' in line for line in lines):
+            suggestions.append({
+                "title": "Add exception handling",
+                "description": "Consider adding try-catch blocks for robust error handling",
+                "code": code,
+                "type": "robustness"
+            })
+        
+        if not any(re.search(r'(public|private|protected)', line) for line in lines if 'class' in line):
+            suggestions.append({
+                "title": "Add access modifiers",
+                "description": "Classes and methods should have explicit access modifiers",
+                "code": code,
+                "type": "best_practice"
+            })
+        
+        return suggestions
+    
+    def _get_cpp_suggestions(self, code: str) -> List[Dict[str, Any]]:
+        """Get C++ specific suggestions"""
+        suggestions = []
+        lines = code.split('\n')
+        
+        has_iostream = any('#include <iostream>' in line for line in lines)
+        has_cout = any('cout' in line for line in lines)
+        
+        if has_cout and not has_iostream:
+            suggestions.append({
+                "title": "Add #include <iostream>",
+                "description": "cout requires iostream header",
+                "code": "#include <iostream>\n\n" + code,
+                "type": "fix"
+            })
+        
+        if 'using namespace std' not in code and 'std::' not in code and has_cout:
+            suggestions.append({
+                "title": "Add namespace declaration",
+                "description": "Use 'using namespace std;' or prefix with 'std::'",
+                "code": "#include <iostream>\nusing namespace std;\n\n" + code,
+                "type": "improvement"
+            })
+        
+        if not any('int main' in line for line in lines):
+            suggestions.append({
+                "title": "Add main function",
+                "description": "C++ programs need a main() function as entry point",
+                "code": code,
+                "type": "structure"
+            })
+        
+        return suggestions
+    
+    def get_code_explanation(self, code: str, language: str, provider: str = "local") -> str:
+        """Get explanation of code functionality using local analysis"""
+        try:
+            if language == "python":
+                return self._explain_python_code(code)
+            elif language == "javascript":
+                return self._explain_javascript_code(code)
+            elif language == "java":
+                return self._explain_java_code(code)
+            elif language == "cpp":
+                return self._explain_cpp_code(code)
         except Exception as e:
-            logging.error(f"Error getting code explanation: {e}")
+            self.logger.error(f"Error explaining code: {e}")
+        
+        return "Local code analysis available. This code defines functions and logic for your program."
+    
+    def _explain_python_code(self, code: str) -> str:
+        """Explain Python code using AST analysis"""
+        explanation = []
+        
+        try:
+            tree = ast.parse(code)
             
-        return "Code explanation not available"
+            functions = [node.name for node in ast.walk(tree) if isinstance(node, ast.FunctionDef)]
+            classes = [node.name for node in ast.walk(tree) if isinstance(node, ast.ClassDef)]
+            imports = [node.names[0].name for node in ast.walk(tree) if isinstance(node, ast.Import)]
+            
+            if imports:
+                explanation.append(f"Imports: {', '.join(imports)}")
+            if classes:
+                explanation.append(f"Defines classes: {', '.join(classes)}")
+            if functions:
+                explanation.append(f"Defines functions: {', '.join(functions)}")
+            
+            return " | ".join(explanation) if explanation else "Python code structure"
+        except:
+            return "Python code with basic operations"
+    
+    def _explain_javascript_code(self, code: str) -> str:
+        """Explain JavaScript code"""
+        functions = re.findall(r'function\s+(\w+)', code)
+        arrow_funcs = re.findall(r'const\s+(\w+)\s*=.*=>', code)
+        
+        if functions or arrow_funcs:
+            all_funcs = functions + arrow_funcs
+            return f"JavaScript code defining: {', '.join(all_funcs)}"
+        return "JavaScript code with logic and operations"
+    
+    def _explain_java_code(self, code: str) -> str:
+        """Explain Java code"""
+        classes = re.findall(r'class\s+(\w+)', code)
+        methods = re.findall(r'(?:public|private|protected)?\s*(?:static\s+)?[\w<>\[\]]+\s+(\w+)\s*\(', code)
+        
+        if classes:
+            return f"Java class: {classes[0]}" + (f" with methods: {', '.join(methods[:3])}" if methods else "")
+        return "Java code structure"
+    
+    def _explain_cpp_code(self, code: str) -> str:
+        """Explain C++ code"""
+        has_main = 'int main' in code
+        classes = re.findall(r'class\s+(\w+)', code)
+        includes = re.findall(r'#include\s*<(\w+)>', code)
+        
+        parts = []
+        if includes:
+            parts.append(f"Uses: {', '.join(includes)}")
+        if classes:
+            parts.append(f"Classes: {', '.join(classes)}")
+        if has_main:
+            parts.append("Contains main function")
+        
+        return " | ".join(parts) if parts else "C++ code structure"
     
     def generate_documentation(self, code: str, language: str) -> str:
-        """Generate documentation for the code"""
+        """Generate documentation for the code using local analysis"""
         try:
-            if self.openai_client:
-                prompt = f"""
-                Generate comprehensive documentation for this {language} code:
+            if language == "python":
+                return self._generate_python_docs(code)
+            else:
+                return f"# Code Documentation\n\n{self.get_code_explanation(code, language)}"
+        except Exception as e:
+            self.logger.error(f"Error generating documentation: {e}")
+            return "Documentation generation available for local code analysis."
+    
+    def _generate_python_docs(self, code: str) -> str:
+        """Generate documentation for Python code"""
+        try:
+            tree = ast.parse(code)
+            docs = ["# Code Documentation\n"]
+            
+            for node in ast.walk(tree):
+                if isinstance(node, ast.FunctionDef):
+                    args = [arg.arg for arg in node.args.args]
+                    docs.append(f"## Function: {node.name}")
+                    docs.append(f"- Arguments: {', '.join(args) if args else 'None'}")
+                    docstring = ast.get_docstring(node)
+                    if docstring:
+                        docs.append(f"- Description: {docstring}")
+                    docs.append("")
                 
-                ```{language}
-                {code}
-                
+                elif isinstance(node, ast.ClassDef):
+                    docs.append(f"## Class: {node.name}")
+                    docstring = ast.get_docstring(node)
+                    if docstring:
+                        docs.append(f"- Description: {docstring}")
+                    docs.append("")
+            
+            return "\n".join(docs)
+        except:
+            return "# Documentation\n\nPython code analysis"
