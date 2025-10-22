@@ -1,4 +1,5 @@
 """Configuration for supported programming languages"""
+import re
 
 SUPPORTED_LANGUAGES = {
     "python": {

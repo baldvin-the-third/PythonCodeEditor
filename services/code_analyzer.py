@@ -144,7 +144,7 @@ class CodeAnalyzer:
                 "Consider alternatives to eval() for security reasons"
             )
     
-    def _analyze_javascript(self, code: str, language: str):
+    def _analyze_javascript(self, code: str, analysis: Dict[str, Any]):
         """JavaScript-specific code analysis"""
         lines = code.split('\n')
         

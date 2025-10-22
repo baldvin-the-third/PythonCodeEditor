@@ -37,7 +37,7 @@ def main():
     
     # Initialize session state
     if 'code' not in st.session_state:
-        st.session_state.code = ""
+        st.session_state.code = SUPPORTED_LANGUAGES["python"]["sample_code"]
     if 'language' not in st.session_state:
         st.session_state.language = "python"
     if 'output' not in st.session_state:
@@ -71,13 +71,9 @@ def main():
         
         # AI Settings
         st.subheader("🤖 AI Settings")
-        ai_provider = st.selectbox(
-            "AI Provider",
-            options=["OpenAI", "Gemini", "Local"],
-            index=0
-        )
+        st.info("Using Local AI Models (No API required)")
         
-        enable_suggestions = st.checkbox("Enable AI Suggestions", value=True)
+        enable_suggestions = st.checkbox("Enable Code Suggestions", value=True)
         enable_analysis = st.checkbox("Enable Code Analysis", value=True)
         
         # Code formatting
@@ -119,11 +115,11 @@ def main():
             
             # Get AI suggestions in background
             if enable_suggestions and code_content.strip():
-                with st.spinner("Getting AI suggestions..."):
+                with st.spinner("Analyzing code..."):
                     suggestions = ai_service.get_suggestions(
                         code_content, 
                         st.session_state.language,
-                        ai_provider.lower()
+                        "local"
                     )
                     st.session_state.suggestions = suggestions
             
